@@ -10,8 +10,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -20,44 +22,34 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK + CMake 3.22.1
+      - name: Install Linux build deps
         run: |
-          set -euxo pipefail
-          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y ninja-build make autoconf automake libtool pkg-config
 
-      # Wichtig: FreeRDP Scripts greifen oft hart auf /sdk/cmake/4.1.2/bin/cmake zu.
-      # Wir "maskieren" das, sodass dieser Pfad in Wirklichkeit CMake 3.22.1 ist.
-      - name: Force scripts to use CMake 3.22.1 (override 4.1.2)
+      # Wichtig: cjson/freeRDP scripts sind oft empfindlich -> CMake 3.22.x ist safe
+      - name: Install CMake 3.22.1
         run: |
-          set -euxo pipefail
-          CMAKE322="$ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake"
-          CMAKE412_DIR="$ANDROID_SDK_ROOT/cmake/4.1.2/bin"
+          sdkmanager --install "cmake;3.22.1"
+          echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
 
-          echo "CMake 3.22.1 is:"
-          "$CMAKE322" --version
+      - name: Install NDK 26.1.10909125
+        run: sdkmanager --install "ndk;26.1.10909125"
 
-          # Falls CMake 4.1.2 nicht existiert, legen wir den Ordner an
-          mkdir -p "$CMAKE412_DIR"
-
-          # Backup original 4.1.2 cmake (falls vorhanden)
-          if [ -f "$CMAKE412_DIR/cmake" ] && [ ! -L "$CMAKE412_DIR/cmake" ]; then
-            mv "$CMAKE412_DIR/cmake" "$CMAKE412_DIR/cmake.bak"
-          fi
-
-          # Symlink: cmake 4.1.2 -> cmake 3.22.1
-          ln -sf "$CMAKE322" "$CMAKE412_DIR/cmake"
-
-          echo "Now /sdk/cmake/4.1.2/bin/cmake points to:"
-          "$CMAKE412_DIR/cmake" --version
-          which cmake || true
-          cmake --version || true
-
-      - name: Build native libs (arm64-v8a only)
+      - name: Build FreeRDP and install into jniLibs
+        env:
+          SDK: ${{ env.ANDROID_SDK_ROOT }}
+          NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
         run: |
-          set -euxo pipefail
-          chmod +x ./scripts/android-build-freerdp.sh
-          ./scripts/android-build-freerdp.sh --ndk "$ANDROID_NDK_HOME" --sdk "$ANDROID_SDK_ROOT" --arch arm64-v8a
+          set -eux
+          for ABI in arm64-v8a armeabi-v7a; do
+            bash scripts/android-build-freerdp.sh \
+              --sdk "$SDK" \
+              --ndk "$NDK" \
+              --arch "$ABI" \
+              --target 23 \
+              --conf scripts/android-build-release.conf
+          done
 
       - name: Upload jniLibs
         uses: actions/upload-artifact@v4
