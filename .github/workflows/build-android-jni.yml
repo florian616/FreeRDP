@@ -22,10 +22,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Linux build deps
+      - name: Install Linux build deps (incl. nasm)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build make autoconf automake libtool pkg-config
+          sudo apt-get install -y \
+            ninja-build make autoconf automake libtool pkg-config \
+            nasm
 
       - name: Install NDK 26.1.10909125
         run: |
@@ -35,19 +37,19 @@ jobs:
       - name: Install CMake 3.22.1 and remove CMake 4.x
         run: |
           sdkmanager --install "cmake;3.22.1"
-          # falls runner cmake 4.x hat: runter, damit scripts nicht hart 4.x nutzen
           sdkmanager --uninstall "cmake;4.1.2" || true
           echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
 
       - name: Verify toolchain
         run: |
           set -eux
+          which cmake
           cmake --version
+          which nasm
+          nasm -v
           echo "NDK at: $ANDROID_NDK_HOME"
-          ls -la "$ANDROID_NDK_HOME" | head
 
-      # ✅ Nur arm64-v8a bauen (Newland Geräte). Kein x86 -> kein nasm.
-      - name: Build FreeRDP native libs (arm64-v8a only)
+      - name: Build FreeRDP native libs (arm64-v8a)
         env:
           SDK: ${{ env.ANDROID_SDK_ROOT }}
           NDK: ${{ env.ANDROID_NDK_HOME }}
@@ -56,7 +58,8 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
           cmake --version
 
-          # Wir verwenden die vorhandenen FreeRDP Scripts
+          # Wir starten das offizielle Build-Script.
+          # Auch wenn es intern noch Dependencies für x86 baut, klappt es jetzt (nasm ist da).
           bash scripts/android-build-freerdp.sh \
             --sdk "$SDK" \
             --ndk "$NDK" \
