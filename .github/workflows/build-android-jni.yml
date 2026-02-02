@@ -13,7 +13,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,35 +28,41 @@ jobs:
           sudo apt-get install -y ninja-build make autoconf automake libtool pkg-config
 
       - name: Install NDK 26.1.10909125
-        run: sdkmanager --install "ndk;26.1.10909125"
+        run: |
+          sdkmanager --install "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: Install CMake 3.22.1 and remove CMake 4.x
         run: |
           sdkmanager --install "cmake;3.22.1"
+          # falls runner cmake 4.x hat: runter, damit scripts nicht hart 4.x nutzen
           sdkmanager --uninstall "cmake;4.1.2" || true
           echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
 
-      - name: Verify CMake
-        run: cmake --version
+      - name: Verify toolchain
+        run: |
+          set -eux
+          cmake --version
+          echo "NDK at: $ANDROID_NDK_HOME"
+          ls -la "$ANDROID_NDK_HOME" | head
 
-      - name: Build FreeRDP and install into jniLibs
+      # ✅ Nur arm64-v8a bauen (Newland Geräte). Kein x86 -> kein nasm.
+      - name: Build FreeRDP native libs (arm64-v8a only)
         env:
           SDK: ${{ env.ANDROID_SDK_ROOT }}
-          NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
+          NDK: ${{ env.ANDROID_NDK_HOME }}
         run: |
           set -eux
           export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
           cmake --version
 
-          # ✅ NUR ARM bauen (kein x86 → kein nasm Problem)
-          for ABI in arm64-v8a armeabi-v7a; do
-            bash scripts/android-build-freerdp.sh \
-              --sdk "$SDK" \
-              --ndk "$NDK" \
-              --arch "$ABI" \
-              --target 23 \
-              --conf scripts/android-build-release.conf
-          done
+          # Wir verwenden die vorhandenen FreeRDP Scripts
+          bash scripts/android-build-freerdp.sh \
+            --sdk "$SDK" \
+            --ndk "$NDK" \
+            --arch "arm64-v8a" \
+            --target 23 \
+            --conf scripts/android-build-release.conf
 
       - name: Upload jniLibs
         uses: actions/upload-artifact@v4
