@@ -27,14 +27,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build make autoconf automake libtool pkg-config
 
-      # Wichtig: cjson/freeRDP scripts sind oft empfindlich -> CMake 3.22.x ist safe
-      - name: Install CMake 3.22.1
-        run: |
-          sdkmanager --install "cmake;3.22.1"
-          echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
-
       - name: Install NDK 26.1.10909125
         run: sdkmanager --install "ndk;26.1.10909125"
+
+      - name: Install CMake 3.22.1 and remove CMake 4.x
+        run: |
+          sdkmanager --install "cmake;3.22.1"
+          sdkmanager --uninstall "cmake;4.1.2" || true
+          echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
+
+      - name: Verify CMake
+        run: |
+          which cmake || true
+          cmake --version
 
       - name: Build FreeRDP and install into jniLibs
         env:
@@ -42,6 +47,9 @@ jobs:
           NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
         run: |
           set -eux
+          export PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH"
+          cmake --version
+
           for ABI in arm64-v8a armeabi-v7a; do
             bash scripts/android-build-freerdp.sh \
               --sdk "$SDK" \
